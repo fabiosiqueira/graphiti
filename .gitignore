@@ -169,3 +169,5 @@ cache.db*
 
 # Personal local dev/test scratch (benchmarks, ad-hoc scripts, run outputs)
 /local/
+# Generated eval output (523 KB per run); only the summary is worth versioning.
+tests/evals/*_graph_results.json

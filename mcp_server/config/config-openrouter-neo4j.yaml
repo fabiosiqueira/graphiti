@@ -1,0 +1,58 @@
+# Graphiti MCP Server Configuration for OpenRouter (cloud LLM + embedder) + Neo4j
+# Replaces config-ollama-neo4j.yaml: extraction and embeddings both run against
+# OpenRouter instead of a local Ollama instance, so the machine no longer needs
+# to serve any local model for this service.
+#
+# json_schema, not json_object: this project's own prior benchmark (see the
+# "Benchmark local Mac + fix json_schema" episode in this graph) found that
+# json_object makes the LLM echo the schema back instead of filling it,
+# causing ValidationError on most Graphiti extraction/dedup prompts.
+# json_schema fixed it completely for local Ollama models; tests/evals/
+# run_openrouter_eval.py uses json_object instead, but only because it needs
+# one mode that's fair across several candidate models for comparison — not
+# because it's the better mode for a single committed production provider.
+
+server:
+  transport: "http"
+  host: "127.0.0.1"
+  port: 8002
+
+llm:
+  provider: "openai"  # OpenRouter exposes an OpenAI-compatible endpoint
+  model: ${MODEL_NAME:deepseek/deepseek-v4-flash}
+  max_tokens: 4096
+  structured_output_mode: json_schema
+
+  providers:
+    openai:
+      api_key: ${OPENAI_API_KEY}
+      api_url: ${OPENAI_API_URL:https://openrouter.ai/api/v1}
+
+embedder:
+  provider: "openai"
+  model: ${EMBEDDER_MODEL:qwen/qwen3-embedding-8b}
+  # Kept at 768 (not Qwen3's native 4096) to match the existing Neo4j vector
+  # index built under Ollama/nomic-embed-text — Qwen3 Embedding supports
+  # Matryoshka truncation to smaller dims, so this avoids a reindex.
+  dimensions: 768
+
+  providers:
+    openai:
+      api_key: ${OPENAI_API_KEY}
+      api_url: ${OPENAI_API_URL:https://openrouter.ai/api/v1}
+
+database:
+  provider: "neo4j"
+
+  providers:
+    neo4j:
+      uri: ${NEO4J_URI:bolt://localhost:7687}
+      username: ${NEO4J_USER:neo4j}
+      password: ${NEO4J_PASSWORD:password}
+      database: ${NEO4J_DATABASE:neo4j}
+      use_parallel_runtime: ${USE_PARALLEL_RUNTIME:false}
+
+graphiti:
+  group_id: ${GRAPHITI_GROUP_ID:mcp_ollama_test}
+  episode_id_prefix: ${EPISODE_ID_PREFIX:}
+  user_id: ${USER_ID:mcp_user}
