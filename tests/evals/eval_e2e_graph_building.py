@@ -22,11 +22,29 @@ import pandas as pd
 from graphiti_core import Graphiti
 from graphiti_core.graphiti import AddEpisodeResults
 from graphiti_core.helpers import semaphore_gather
-from graphiti_core.llm_client import LLMConfig, OpenAIClient
+from graphiti_core.llm_client import LLMClient, LLMConfig
 from graphiti_core.nodes import EpisodeType
 from graphiti_core.prompts import prompt_library
 from graphiti_core.prompts.eval import EvalAddEpisodeResults
-from tests.test_graphiti_int import NEO4J_URI, NEO4j_PASSWORD, NEO4j_USER
+from tests.helpers_test import NEO4J_PASSWORD, NEO4J_URI, NEO4J_USER
+
+# Baseline/judge model: fixed and independent of any candidate model under test,
+# so a candidate can never grade its own graph-building output. Routed through
+# OpenRouter since that's what OPENAI_API_KEY/OPENAI_BASE_URL are configured for
+# in this project (see server/graph_service/zep_graphiti.py).
+_JUDGE_MODEL = 'openai/gpt-4.1-mini'
+
+
+def default_judge_client() -> LLMClient:
+    from graphiti_core.llm_client.openai_generic_client import OpenAIGenericClient
+
+    # json_object, not json_schema: OpenRouter routes openai/* through Azure's Responses
+    # API, which enforces a stricter schema subset (additionalProperties: false) than this
+    # client's json_schema mode produces — see OpenAIGenericClient._build_response_format.
+    return OpenAIGenericClient(
+        config=LLMConfig(model=_JUDGE_MODEL, small_model=_JUDGE_MODEL),
+        structured_output_mode='json_object',
+    )
 
 
 async def build_subgraph(
@@ -103,9 +121,8 @@ async def build_graph(
 
 
 async def build_baseline_graph(multi_session_count: int, session_length: int):
-    # Use gpt-4.1-mini for graph building baseline
-    llm_client = OpenAIClient(config=LLMConfig(model='gpt-4.1-mini'))
-    graphiti = Graphiti(NEO4J_URI, NEO4j_USER, NEO4j_PASSWORD, llm_client=llm_client)
+    llm_client = default_judge_client()
+    graphiti = Graphiti(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, llm_client=llm_client)
 
     add_episode_results, _ = await build_graph(
         'baseline', multi_session_count, session_length, graphiti
@@ -122,10 +139,30 @@ async def build_baseline_graph(multi_session_count: int, session_length: int):
         json.dump(serializable_baseline_graph_results, file, indent=4, default=str)
 
 
-async def eval_graph(multi_session_count: int, session_length: int, llm_client=None) -> float:
+async def eval_graph(
+    multi_session_count: int,
+    session_length: int,
+    llm_client: LLMClient | None = None,
+    judge_client: LLMClient | None = None,
+    group_id_suffix: str = 'candidate',
+    output_filename: str = 'candidate_graph_results.json',
+) -> float:
+    """Build a candidate graph with `llm_client` and score it against the baseline.
+
+    `judge_client` grades which graph is better and defaults to the same fixed
+    model as the baseline builder — kept separate from `llm_client` so a candidate
+    model is never the judge of its own graph-building output.
+
+    `group_id_suffix` and `output_filename` must be unique per candidate model when
+    comparing several models: `add_episode` resolves/dedups against existing graph
+    state under a `group_id`, so two candidates sharing a suffix would contaminate
+    each other's graphs across runs.
+    """
     if llm_client is None:
-        llm_client = OpenAIClient(config=LLMConfig(model='gpt-4.1-mini'))
-    graphiti = Graphiti(NEO4J_URI, NEO4j_USER, NEO4j_PASSWORD, llm_client=llm_client)
+        llm_client = default_judge_client()
+    if judge_client is None:
+        judge_client = default_judge_client()
+    graphiti = Graphiti(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, llm_client=llm_client)
     with open('baseline_graph_results.json') as file:
         baseline_results_raw = json.load(file)
 
@@ -134,10 +171,10 @@ async def eval_graph(multi_session_count: int, session_length: int, llm_client=N
             for key, value in baseline_results_raw.items()
         }
     add_episode_results, add_episode_context = await build_graph(
-        'candidate', multi_session_count, session_length, graphiti
+        group_id_suffix, multi_session_count, session_length, graphiti
     )
 
-    filename = 'candidate_graph_results.json'
+    filename = output_filename
 
     candidate_baseline_graph_results = {
         key: [item.model_dump(mode='json') for item in value]
@@ -165,7 +202,7 @@ async def eval_graph(multi_session_count: int, session_length: int, llm_client=N
                 'previous_messages': episodes[1:],
             }
 
-            llm_response = await llm_client.generate_response(
+            llm_response = await judge_client.generate_response(
                 prompt_library.eval.eval_add_episode_results(context),
                 response_model=EvalAddEpisodeResults,
             )
