@@ -81,11 +81,11 @@ class TestNoAccidentalWidening:
 
     @pytest.mark.asyncio
     async def test_facts_stay_on_configured_group(self, fake_service, configured_group):
-        fake_service.search.return_value = []
+        fake_service.search_.return_value = SearchResults(edges=[])
 
         result = await server.search_memory_facts(query='q')
 
-        assert fake_service.search.call_args.kwargs['group_ids'] == ['tenant-a']
+        assert fake_service.search_.call_args.kwargs['group_ids'] == ['tenant-a']
         assert result['searched_group_ids'] == ['tenant-a']
 
     @pytest.mark.asyncio
@@ -102,11 +102,11 @@ class TestStarReadsEverything:
     @pytest.mark.asyncio
     async def test_facts_star_passes_none_to_core(self, fake_service, configured_group):
         """None is what graphiti-core's search path reads as 'no group filter'."""
-        fake_service.search.return_value = []
+        fake_service.search_.return_value = SearchResults(edges=[])
 
         result = await server.search_memory_facts(query='q', group_ids='*')
 
-        assert fake_service.search.call_args.kwargs['group_ids'] is None
+        assert fake_service.search_.call_args.kwargs['group_ids'] is None
         assert result['searched_group_ids'] is None
 
     @pytest.mark.asyncio
@@ -124,7 +124,7 @@ class TestEmptyResultReportsItsScope:
 
     @pytest.mark.asyncio
     async def test_empty_facts_carry_scope(self, fake_service, configured_group):
-        fake_service.search.return_value = []
+        fake_service.search_.return_value = SearchResults(edges=[])
 
         result = await server.search_memory_facts(query='q')
 
