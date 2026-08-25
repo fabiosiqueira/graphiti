@@ -8,6 +8,7 @@ import asyncio
 import logging
 import os
 import sys
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -1203,6 +1204,26 @@ async def health_check(request) -> JSONResponse:
     return JSONResponse({'status': 'healthy', 'service': 'graphiti-mcp'})
 
 
+PACKAGED_CONFIG = Path(__file__).parent.parent / 'config' / 'config.yaml'
+
+
+def resolve_config_path(
+    cli_config: Path | None,
+    environ: Mapping[str, str],
+    packaged: Path = PACKAGED_CONFIG,
+) -> str:
+    """Decide which YAML config to load: CLI flag > $CONFIG_PATH > packaged default.
+
+    `config.schema` reads $CONFIG_PATH, and the shipped Compose files set it, but
+    this used to assign argparse's own default over it on every run — so the
+    variable was dead and a container pointing at another config silently got
+    the packaged one: wrong database, wrong models, and no error to say so.
+    """
+    if cli_config is not None:
+        return str(cli_config)
+    return environ.get('CONFIG_PATH') or str(packaged)
+
+
 async def initialize_server() -> ServerConfig:
     """Parse CLI arguments and initialize the Graphiti server configuration."""
     global config, graphiti_service, queue_service, graphiti_client, semaphore
@@ -1211,14 +1232,13 @@ async def initialize_server() -> ServerConfig:
         description='Run the Graphiti MCP server with YAML configuration support'
     )
 
-    # Configuration file argument
-    # Default to config/config.yaml relative to the mcp_server directory
-    default_config = Path(__file__).parent.parent / 'config' / 'config.yaml'
+    # Configuration file argument. No argparse default: the default belongs to
+    # resolve_config_path(), which lets $CONFIG_PATH be heard.
     parser.add_argument(
         '--config',
         type=Path,
-        default=default_config,
-        help='Path to YAML configuration file (default: config/config.yaml)',
+        default=None,
+        help='Path to YAML configuration file (default: $CONFIG_PATH, else config/config.yaml)',
     )
 
     # Transport arguments
@@ -1282,8 +1302,7 @@ async def initialize_server() -> ServerConfig:
     args = parser.parse_args()
 
     # Set config path in environment for the settings to pick up
-    if args.config:
-        os.environ['CONFIG_PATH'] = str(args.config)
+    os.environ['CONFIG_PATH'] = resolve_config_path(args.config, os.environ)
 
     # Load configuration with environment variables and YAML
     config = GraphitiConfig()
