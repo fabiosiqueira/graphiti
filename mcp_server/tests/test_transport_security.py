@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for the DNS-rebinding allow-list on the HTTP transport.
+"""Unit tests for how the HTTP transport behaves behind a reverse proxy.
 
 FastMCP decides its transport-security policy inside `FastMCP.__init__`, from
 whatever host it holds at that moment. This server builds `mcp` at import time
@@ -55,3 +55,22 @@ def test_empty_string_means_no_hosts():
     """`${MCP_ALLOWED_HOSTS:}` resolves to None when unset — must not become ['']."""
     assert ServerConfig(host='0.0.0.0', allowed_hosts=None).allowed_hosts == []
     assert ServerConfig(host='0.0.0.0', allowed_hosts='').allowed_hosts == []
+
+
+# ── X-Forwarded-* from the proxy ──────────────────────────────────────────────
+
+
+def test_forwarded_allow_ips_defaults_to_none():
+    """None leaves uvicorn's own default (loopback only) in place."""
+    assert ServerConfig().forwarded_allow_ips is None
+
+
+def test_empty_forwarded_allow_ips_is_none_not_empty_string():
+    """`${MCP_FORWARDED_ALLOW_IPS:}` resolves to None when unset; an empty
+    string would tell uvicorn to trust nothing and is not what "unset" means."""
+    assert ServerConfig(forwarded_allow_ips='').forwarded_allow_ips is None
+
+
+def test_forwarded_allow_ips_is_kept_verbatim():
+    """uvicorn parses this itself — comma-separated IPs, or '*'."""
+    assert ServerConfig(forwarded_allow_ips='*').forwarded_allow_ips == '*'
