@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -105,6 +105,24 @@ class ServerConfig(BaseModel):
     host: str = Field(default='0.0.0.0', description='Server host')
     port: int = Field(default=8000, description='Server port')
     auth: AuthConfig = Field(default_factory=AuthConfig, description='Inbound authentication')
+    allowed_hosts: list[str] = Field(
+        default_factory=list,
+        description='Host header allow-list for DNS-rebinding protection (empty = off)',
+    )
+    allowed_origins: list[str] = Field(
+        default_factory=list,
+        description='Origin header allow-list; only consulted when allowed_hosts is set',
+    )
+
+    @field_validator('allowed_hosts', 'allowed_origins', mode='before')
+    @classmethod
+    def _split_csv(cls, value: object) -> object:
+        """Accept a comma-separated string: an env var carries one, the field is a list."""
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(',') if item.strip()]
+        return value
 
 
 class OpenAIProviderConfig(BaseModel):

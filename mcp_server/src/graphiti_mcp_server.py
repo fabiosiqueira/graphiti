@@ -21,6 +21,7 @@ from graphiti_core.nodes import EntityNode, EpisodeType, SagaNode
 from graphiti_core.search.search_filters import SearchFilters
 from graphiti_core.utils.maintenance.graph_data_operations import clear_data
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
 
@@ -1204,6 +1205,34 @@ async def health_check(request) -> JSONResponse:
     return JSONResponse({'status': 'healthy', 'service': 'graphiti-mcp'})
 
 
+LOOPBACK_HOSTS = ('127.0.0.1', 'localhost', '::1')
+
+
+def resolve_transport_security(server: ServerConfig) -> TransportSecuritySettings | None:
+    """Decide the DNS-rebinding policy once the real bind address is known.
+
+    `FastMCP.__init__` fixes this policy from the host it holds at construction
+    time, which here is the loopback default — `mcp` is built at import, before
+    any config is read. Assigning `mcp.settings.host` afterwards does not
+    revisit it, so a routable bind inherits a loopback allow-list that no real
+    Host header can match, and every request gets 421.
+
+    Returns None when the inherited policy is already right (loopback binds).
+    """
+    if server.allowed_hosts:
+        return TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=server.allowed_hosts,
+            allowed_origins=server.allowed_origins,
+        )
+    if server.host not in LOOPBACK_HOSTS:
+        # The SDK's own default for a non-loopback bind. Rebinding protection
+        # guards browser clients on localhost; behind TLS and a bearer token it
+        # buys nothing, and an unmatchable allow-list would only 421 everyone.
+        return TransportSecuritySettings(enable_dns_rebinding_protection=False)
+    return None
+
+
 PACKAGED_CONFIG = Path(__file__).parent.parent / 'config' / 'config.yaml'
 
 
@@ -1363,6 +1392,10 @@ async def initialize_server() -> ServerConfig:
         mcp.settings.host = config.server.host
     if config.server.port:
         mcp.settings.port = config.server.port
+
+    transport_security = resolve_transport_security(config.server)
+    if transport_security is not None:
+        mcp.settings.transport_security = transport_security
 
     # Return MCP configuration for transport
     return config.server

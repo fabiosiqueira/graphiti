@@ -24,6 +24,9 @@ server:
   auth:
     enabled: ${MCP_AUTH_ENABLED:false}
     token: ${MCP_AUTH_TOKEN:}
+  # Comma-separated Host allow-list (DNS-rebinding protection). Empty = off,
+  # which is what a loopback bind wants; a public bind should name its FQDN.
+  allowed_hosts: ${MCP_ALLOWED_HOSTS:}
 
 llm:
   provider: "openai"  # OpenRouter exposes an OpenAI-compatible endpoint
