@@ -1,0 +1,85 @@
+# syntax=docker/dockerfile:1
+# Graphiti MCP Server — fork build.
+#
+# Differs from Dockerfile.standalone in two ways, both deliberate:
+#
+#  1. Build context is the REPOSITORY ROOT, not mcp_server/, so the fork's own
+#     graphiti_core can be installed over the PyPI one. The standalone image
+#     installs graphiti-core from PyPI, which means none of this fork's carries
+#     reach the deployment — including the json_schema tolerance fix, without
+#     which DeepSeek V4 Flash returns a bare JSON array, the extraction model
+#     rejects it, and ~9% of episodes are dropped with no error anywhere the
+#     caller can see (measured 2026-08-21: 11 lost in ~120).
+#
+#  2. No `--extra providers`. That extra exists for the local BGE reranker,
+#     which drags in the torch stack (~4GB of a 5.8GB image) and which this
+#     deployment never instantiates: with an OpenAI-compatible provider,
+#     CrossEncoderFactory picks OpenAIRerankerClient and the BGE fallback is
+#     dead code. Switching to a provider with no native reranker (Anthropic +
+#     Voyage) would now fail at startup rather than silently downloading 2.3GB
+#     on first use — a louder failure, and an intentional one.
+#
+# Build from the repo root:
+#   docker build -f mcp_server/docker/Dockerfile.fork -t graphiti-mcp:fork .
+
+FROM python:3.11-slim-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+ADD https://astral.sh/uv/install.sh /uv-installer.sh
+RUN sh /uv-installer.sh && rm /uv-installer.sh
+
+ENV PATH="/root/.local/bin:${PATH}"
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app/mcp
+
+# Resolve the dependency tree from PyPI first. graphiti-core arrives here as an
+# ordinary dependency; the fork's copy replaces it further down. Keeping the two
+# steps separate is what lets uv resolve the transitive tree normally.
+COPY mcp_server/pyproject.toml mcp_server/uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    set -eu; \
+    sed -i 's/graphiti-core\[falkordb\]/graphiti-core[neo4j,falkordb]/' pyproject.toml; \
+    rm -f uv.lock; \
+    uv lock; \
+    uv sync --no-group dev --extra azure
+
+# Overlay the fork's graphiti_core on top of the resolved PyPI one. --no-deps
+# because the dependency tree is already installed and correct; this step is
+# only swapping the package's own code. Same shape as the local wheel override
+# the LaunchAgent runs against, so container and workstation run one codebase.
+COPY pyproject.toml README.md ./fork/
+COPY graphiti_core/ ./fork/graphiti_core/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /app/mcp/.venv/bin/python --no-deps --force-reinstall ./fork \
+    && rm -rf ./fork \
+    && /app/mcp/.venv/bin/python -c "import importlib.metadata as m; print('graphiti-core:', m.version('graphiti-core'))"
+
+COPY mcp_server/main.py ./
+COPY mcp_server/src/ ./src/
+COPY mcp_server/config/ ./config/
+
+RUN mkdir -p /var/log/graphiti
+
+ARG BUILD_DATE
+ARG VCS_REF
+LABEL org.opencontainers.image.title="Graphiti MCP Server (fork)" \
+      org.opencontainers.image.description="Graphiti MCP server built against this fork's graphiti_core" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.source="https://github.com/fabiosiqueira/graphiti"
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["uv", "run", "--no-sync", "main.py"]
