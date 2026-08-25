@@ -212,25 +212,20 @@ class GraphitiService:
     async def initialize(self) -> None:
         """Initialize the Graphiti client with factory-created components."""
         try:
-            # Create clients using factories
-            llm_client = None
-            embedder_client = None
+            # Create clients using factories. None of these are caught: passing
+            # llm_client=None or embedder=None to Graphiti restores its own
+            # default OpenAI clients, which is the worst possible outcome for a
+            # server configured against another provider — it comes up healthy,
+            # accepts writes, and sends the configured key to api.openai.com,
+            # where every episode dies with 401 inside the background worker.
+            # From a client that is indistinguishable from success: add_memory
+            # returns 200 and the episode simply never appears.
+            llm_client = LLMClientFactory.create(self.config.llm)
+            embedder_client = EmbedderFactory.create(self.config.embedder)
 
-            # Create LLM client based on configured provider
-            try:
-                llm_client = LLMClientFactory.create(self.config.llm)
-            except Exception as e:
-                logger.warning(f'Failed to create LLM client: {e}')
-
-            # Create embedder client based on configured provider
-            try:
-                embedder_client = EmbedderFactory.create(self.config.embedder)
-            except Exception as e:
-                logger.warning(f'Failed to create embedder client: {e}')
-
-            # Create cross-encoder (reranker) client. Without this, Graphiti defaults to
-            # OpenAIRerankerClient, which needs an OpenAI API key even on non-OpenAI setups.
-            # Reranker setup errors must remain fatal rather than silently restoring that default.
+            # Same reasoning for the cross-encoder: without one, Graphiti falls
+            # back to OpenAIRerankerClient, which needs an OpenAI API key even on
+            # non-OpenAI setups.
             cross_encoder_client = CrossEncoderFactory.create(self.config.llm, self.config.embedder)
 
             # Get database configuration
