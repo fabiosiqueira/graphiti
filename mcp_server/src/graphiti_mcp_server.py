@@ -1455,6 +1455,12 @@ async def run_mcp_server():
                 host=mcp.settings.host,
                 port=mcp.settings.port,
                 log_level=mcp.settings.log_level.lower(),
+                # Behind a TLS-terminating proxy, uvicorn ignores X-Forwarded-Proto
+                # unless the proxy's address is trusted, so the app thinks it is
+                # serving plain HTTP and emits http:// redirects. A client that
+                # follows one sends its bearer token over port 80 in the clear.
+                proxy_headers=True,
+                forwarded_allow_ips=mcp_config.forwarded_allow_ips,
             )
         )
         await server.serve()

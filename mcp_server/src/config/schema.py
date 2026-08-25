@@ -113,6 +113,19 @@ class ServerConfig(BaseModel):
         default_factory=list,
         description='Origin header allow-list; only consulted when allowed_hosts is set',
     )
+    forwarded_allow_ips: str | None = Field(
+        default=None,
+        description=(
+            'Peers whose X-Forwarded-* headers to trust, or "*". Required behind a '
+            'TLS-terminating proxy: without it the app believes it is serving plain '
+            'HTTP and builds http:// redirects.'
+        ),
+    )
+
+    @field_validator('forwarded_allow_ips', mode='before')
+    @classmethod
+    def _blank_is_unset(cls, value: object) -> object:
+        return value or None
 
     @field_validator('allowed_hosts', 'allowed_origins', mode='before')
     @classmethod

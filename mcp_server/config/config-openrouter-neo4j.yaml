@@ -27,6 +27,9 @@ server:
   # Comma-separated Host allow-list (DNS-rebinding protection). Empty = off,
   # which is what a loopback bind wants; a public bind should name its FQDN.
   allowed_hosts: ${MCP_ALLOWED_HOSTS:}
+  # Set to the proxy's address (or '*' when the container port is not
+  # published) so X-Forwarded-Proto is honoured and redirects stay https.
+  forwarded_allow_ips: ${MCP_FORWARDED_ALLOW_IPS:}
 
 llm:
   provider: "openai"  # OpenRouter exposes an OpenAI-compatible endpoint
