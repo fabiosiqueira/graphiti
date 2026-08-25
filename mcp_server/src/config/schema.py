@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -73,6 +73,28 @@ class YamlSettingsSource(PydanticBaseSettingsSource):
         return self._expand_env_vars(raw_config)
 
 
+class AuthConfig(BaseModel):
+    """Inbound authentication for the HTTP transport.
+
+    Disabled by default: a server bound to localhost needs no token, and
+    requiring one would break every existing stdio/local setup. Turn it on
+    before binding a public address.
+    """
+
+    enabled: bool = Field(default=False, description='Require a bearer token on the MCP endpoint')
+    token: str | None = Field(default=None, description='Expected bearer token')
+
+    @model_validator(mode='after')
+    def _token_required_when_enabled(self) -> 'AuthConfig':
+        if self.enabled and not self.token:
+            raise ValueError(
+                'server.auth.enabled is true but no token is set. Refusing to start: '
+                'a server that reads as secured but serves an open port is worse than '
+                'one that fails loudly. Set MCP_AUTH_TOKEN.'
+            )
+        return self
+
+
 class ServerConfig(BaseModel):
     """Server configuration."""
 
@@ -82,6 +104,7 @@ class ServerConfig(BaseModel):
     )
     host: str = Field(default='0.0.0.0', description='Server host')
     port: int = Field(default=8000, description='Server port')
+    auth: AuthConfig = Field(default_factory=AuthConfig, description='Inbound authentication')
 
 
 class OpenAIProviderConfig(BaseModel):

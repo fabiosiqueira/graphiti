@@ -12,10 +12,18 @@
 # one mode that's fair across several candidate models for comparison — not
 # because it's the better mode for a single committed production provider.
 
+# Host/port/auth come from the environment so this one file serves both the
+# LaunchAgent on the Mac (loopback, no auth) and the container on the VPS
+# (0.0.0.0:8000, bearer required). Two config files would drift, and any
+# latency comparison between the two deployments would then be measuring the
+# drift instead of the network.
 server:
   transport: "http"
-  host: "127.0.0.1"
-  port: 8002
+  host: ${MCP_HOST:127.0.0.1}
+  port: ${MCP_PORT:8002}
+  auth:
+    enabled: ${MCP_AUTH_ENABLED:false}
+    token: ${MCP_AUTH_TOKEN:}
 
 llm:
   provider: "openai"  # OpenRouter exposes an OpenAI-compatible endpoint

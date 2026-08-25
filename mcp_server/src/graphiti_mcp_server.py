@@ -50,6 +50,7 @@ from utils.formatting import (
     to_edge_result,
     to_node_result,
 )
+from utils.http_auth import apply_http_auth
 from utils.type_config import (
     ALL_GROUPS,
     build_edge_type_map,
@@ -1382,10 +1383,29 @@ async def run_mcp_server():
         logger.info('=' * 60)
         logger.info('For MCP clients, connect to the /mcp/ endpoint above')
 
+        if mcp_config.auth.enabled:
+            logger.info('  Auth: bearer token required (/health stays open)')
+        else:
+            logger.info('  Auth: DISABLED - do not bind a public address like this')
+
         # Configure uvicorn logging to match our format
         configure_uvicorn_logging()
 
-        await mcp.run_streamable_http_async()
+        # Inlined from FastMCP.run_streamable_http_async(): that helper builds the
+        # Starlette app and the uvicorn server in one step and returns no handle,
+        # leaving nowhere to wrap the auth guard around the app.
+        import uvicorn
+
+        app = apply_http_auth(mcp.streamable_http_app(), mcp_config.auth)
+        server = uvicorn.Server(
+            uvicorn.Config(
+                app,
+                host=mcp.settings.host,
+                port=mcp.settings.port,
+                log_level=mcp.settings.log_level.lower(),
+            )
+        )
+        await server.serve()
     else:
         raise ValueError(
             f'Unsupported transport: {mcp_config.transport}. Use "sse", "stdio", or "http"'
