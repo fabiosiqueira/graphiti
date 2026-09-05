@@ -206,6 +206,14 @@ class LLMConfig(BaseModel):
         default=None, description='Temperature (optional, defaults to None for reasoning models)'
     )
     max_tokens: int = Field(default=4096, description='Max tokens')
+    reasoning: str | None = Field(
+        default=None,
+        description=(
+            "Reasoning control. 'none'/'off' turns reasoning off (OpenRouter-compatible "
+            'providers get {"enabled": false}; official OpenAI gets effort none); any other '
+            'value is sent as the reasoning effort. Unset keeps the per-model default.'
+        ),
+    )
     structured_output_mode: Literal['json_schema', 'json_object'] = Field(
         default='json_schema',
         description=(

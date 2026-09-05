@@ -166,3 +166,31 @@ async def test_non_retryable_error_is_not_retried():
         await client.generate_response(_messages(), response_model=ResponseModel)
 
     assert len(completions.create_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_no_reasoning_by_default_sends_no_extra_body():
+    client, completions = _make_client()
+
+    await client.generate_response(_messages(), response_model=ResponseModel)
+
+    assert 'extra_body' not in completions.create_calls[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('value', ['none', 'off'])
+async def test_reasoning_none_disables_reasoning_via_extra_body(value):
+    client, completions = _make_client(reasoning=value)
+
+    await client.generate_response(_messages(), response_model=ResponseModel)
+
+    assert completions.create_calls[0]['extra_body'] == {'reasoning': {'enabled': False}}
+
+
+@pytest.mark.asyncio
+async def test_reasoning_effort_is_sent_via_extra_body():
+    client, completions = _make_client(reasoning='low')
+
+    await client.generate_response(_messages(), response_model=ResponseModel)
+
+    assert completions.create_calls[0]['extra_body'] == {'reasoning': {'effort': 'low'}}

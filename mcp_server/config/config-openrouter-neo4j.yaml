@@ -35,6 +35,10 @@ llm:
   provider: "openai"  # OpenRouter exposes an OpenAI-compatible endpoint
   model: ${MODEL_NAME:deepseek/deepseek-v4-flash}
   max_tokens: 4096
+  # Reasoning off by default: DeepSeek V4 Flash thinks by default on OpenRouter and
+  # 81% of output tokens (measured 2026-09-04) were reasoning — pure cost for
+  # structured extraction. Set LLM_REASONING=low|medium|high to turn it back on.
+  reasoning: ${LLM_REASONING:none}
   structured_output_mode: json_schema
 
   providers:

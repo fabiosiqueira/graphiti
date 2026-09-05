@@ -64,6 +64,7 @@ class OpenAIGenericClient(LLMClient):
         client: typing.Any = None,
         max_tokens: int = 16384,
         structured_output_mode: StructuredOutputMode = 'json_schema',
+        reasoning: str | None = None,
     ):
         """
         Initialize the OpenAIGenericClient with the provided configuration, cache setting, and client.
@@ -79,6 +80,12 @@ class OpenAIGenericClient(LLMClient):
                 that do not support the ``json_schema`` response format (e.g. DeepSeek); in
                 that mode the schema is injected into the prompt instead of being enforced
                 by the API.
+            reasoning (str | None): Reasoning control forwarded to the provider as an
+                OpenRouter-style ``reasoning`` body field. ``'none'``/``'off'`` sends
+                ``{"enabled": false}`` (turns thinking off on hybrid models such as
+                DeepSeek — for Graphiti's structured extraction the reasoning tokens
+                are pure cost); any other value is sent as ``{"effort": value}``.
+                ``None`` (the default) sends nothing and leaves the provider default.
 
         """
         # removed caching to simplify the `generate_response` override
@@ -93,11 +100,20 @@ class OpenAIGenericClient(LLMClient):
         # Override max_tokens to support higher limits for local models
         self.max_tokens = max_tokens
         self.structured_output_mode: StructuredOutputMode = structured_output_mode
+        self.reasoning = reasoning
 
         if client is None:
             self.client = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
         else:
             self.client = client
+
+    def _reasoning_extra_body(self) -> dict[str, Any] | None:
+        """Body fields for the provider's ``reasoning`` control, or None when unset."""
+        if self.reasoning is None:
+            return None
+        if self.reasoning in ('none', 'off'):
+            return {'reasoning': {'enabled': False}}
+        return {'reasoning': {'effort': self.reasoning}}
 
     def _build_response_format(self, response_model: type[BaseModel] | None) -> dict[str, Any]:
         """Build the ``response_format`` payload for the chat completion request.
@@ -152,12 +168,14 @@ class OpenAIGenericClient(LLMClient):
             elif m.role == 'system':
                 openai_messages.append({'role': 'system', 'content': m.content})
         try:
+            extra_body = self._reasoning_extra_body()
             response = await self.client.chat.completions.create(
                 model=self.model or DEFAULT_MODEL,
                 messages=openai_messages,
                 temperature=self.temperature,
                 max_tokens=max_tokens,
                 response_format=self._build_response_format(response_model),  # type: ignore[arg-type]
+                **({'extra_body': extra_body} if extra_body is not None else {}),
             )
             result = response.choices[0].message.content or ''
             # An empty body (refusal, length finish_reason, or a flaky endpoint) would make

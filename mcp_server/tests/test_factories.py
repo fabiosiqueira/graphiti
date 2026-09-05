@@ -94,6 +94,46 @@ class TestLLMClientFactoryRouting:
         assert client.structured_output_mode == 'json_object'
 
 
+class TestGenericClientReasoningKnob:
+    """`llm.reasoning` in config reaches the generic client (OpenRouter & co)."""
+
+    @staticmethod
+    def _config(reasoning: str | None) -> LLMConfig:
+        return LLMConfig(
+            provider='openai',
+            model='deepseek/deepseek-v4-flash',
+            reasoning=reasoning,
+            providers=LLMProvidersConfig(
+                openai=OpenAIProviderConfig(
+                    api_key='test-key', api_url='https://openrouter.ai/api/v1'
+                )
+            ),
+        )
+
+    def test_unset_sends_nothing(self):
+        client = LLMClientFactory.create(self._config(None))
+        assert isinstance(client, OpenAIGenericClient)
+        assert getattr(client, 'reasoning', None) is None
+
+    def test_configured_value_is_forwarded(self):
+        client = LLMClientFactory.create(self._config('none'))
+        assert isinstance(client, OpenAIGenericClient)
+        assert client.reasoning == 'none'
+
+    def test_explicit_reasoning_overrides_model_default_on_official_openai(self):
+        config = LLMConfig(
+            provider='openai',
+            model='gpt-5',
+            reasoning='low',
+            providers=LLMProvidersConfig(
+                openai=OpenAIProviderConfig(api_key='test-key', api_url='https://api.openai.com/v1')
+            ),
+        )
+        client = LLMClientFactory.create(config)
+        assert isinstance(client, OpenAIClient)
+        assert client.reasoning == 'low'
+
+
 class TestLLMClientReasoningEffort:
     """The OpenAI factory selects reasoning effort by model family."""
 

@@ -168,11 +168,19 @@ class LLMClientFactory:
                         config=llm_config,
                         max_tokens=config.max_tokens,
                         structured_output_mode=config.structured_output_mode,
+                        # Only forward when set: a PyPI graphiti-core without the
+                        # kwarg (older than this fork's carry) must still construct.
+                        **({'reasoning': config.reasoning} if config.reasoning is not None else {}),
                     )
                 else:
                     # Use OpenAIClient for official OpenAI API (supports Responses API).
                     # Reasoning models get a reasoning effort; others must not.
-                    effort = reasoning_effort_for_model(config.model)
+                    # An explicit `llm.reasoning` in config always wins.
+                    effort = (
+                        config.reasoning
+                        if config.reasoning is not None
+                        else reasoning_effort_for_model(config.model)
+                    )
                     if effort is not None:
                         return OpenAIClient(config=llm_config, reasoning=effort, verbosity='low')
                     return OpenAIClient(config=llm_config)
