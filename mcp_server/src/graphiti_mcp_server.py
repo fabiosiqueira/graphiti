@@ -22,7 +22,6 @@ from graphiti_core.edges import EntityEdge
 from graphiti_core.nodes import EntityNode, EpisodeType, EpisodicNode, SagaNode
 from graphiti_core.search.search_filters import SearchFilters
 from graphiti_core.utils.maintenance.graph_data_operations import clear_data
-from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
@@ -55,6 +54,7 @@ from utils.formatting import (
     to_node_result,
 )
 from utils.http_auth import apply_http_auth
+from utils.tool_args import StrictMCPServer
 from utils.type_config import (
     ALL_GROUPS,
     build_edge_type_map,
@@ -185,7 +185,7 @@ server requires a configured database and valid API keys for language-model oper
 """
 
 # MCP server instance
-mcp = MCPServer(
+mcp = StrictMCPServer(
     'Graphiti Agent Memory',
     instructions=GRAPHITI_MCP_INSTRUCTIONS,
 )
