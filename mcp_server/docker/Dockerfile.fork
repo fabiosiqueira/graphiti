@@ -44,11 +44,14 @@ WORKDIR /app/mcp
 # Resolve the dependency tree from PyPI first. graphiti-core arrives here as an
 # ordinary dependency; the fork's copy replaces it further down. Keeping the two
 # steps separate is what lets uv resolve the transitive tree normally.
+# `uv lock` runs against the committed lock, not a deleted one: the sed adds the
+# neo4j extra, and uv only resolves that delta, keeping every other pin at the
+# version the test suite ran against. Relocking from scratch pulled whatever PyPI
+# had that day (openai 3.x dropped httpx and the container died on import).
 COPY mcp_server/pyproject.toml mcp_server/uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     set -eu; \
     sed -i 's/graphiti-core\[falkordb\]/graphiti-core[neo4j,falkordb]/' pyproject.toml; \
-    rm -f uv.lock; \
     uv lock; \
     uv sync --no-group dev --extra azure
 
