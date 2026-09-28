@@ -29,10 +29,17 @@ from utils.type_config import ALL_GROUPS, resolve_read_group_ids  # noqa: E402
 NOW = datetime(2026, 8, 21, 12, 0, tzinfo=timezone.utc)
 
 
+class NoCloneDriver:
+    """Neo4j-like driver: clone() is a no-op, so per-group routing keeps one graph."""
+
+    def clone(self, database: str):
+        return self
+
+
 @pytest.fixture
 def fake_service(monkeypatch):
     client = AsyncMock(spec=Graphiti)
-    client.driver = object()
+    client.driver = NoCloneDriver()
     service = AsyncMock()
     service.get_client = AsyncMock(return_value=client)
     monkeypatch.setattr(server, 'graphiti_service', service)
