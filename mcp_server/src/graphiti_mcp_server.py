@@ -174,6 +174,8 @@ Core tools:
 - get_entity_edge / get_episodes: retrieve specific facts or episodes.
 - delete_episode: remove an episode and cascade-delete the entities/facts it solely created.
 - delete_entity_edge / clear_graph: remove a fact, or clear a group's data.
+- delete_entity_node: remove an entity node with all its facts, when its own summary is wrong;
+  refuses a node outside the given group.
 
 Custom types: the server can register rich entity-type and edge-type models (with attributes and
 extraction instructions) from configuration, and constrain which edge types are allowed between which
@@ -828,6 +830,62 @@ async def delete_entity_edge(
         error_msg = str(e)
         logger.error(f'Error deleting entity edge: {error_msg}')
         return ErrorResponse(error=f'Error deleting entity edge: {error_msg}')
+
+
+@mcp.tool()
+async def delete_entity_node(
+    uuid: str, group_id: str | None = None
+) -> SuccessResponse | ErrorResponse:
+    """Delete an entity node and every fact (edge) attached to it.
+
+    Use this when the node's own summary is wrong: graphiti-core consolidates text in the
+    node summary, so deleting the facts behind it (delete_entity_edge) leaves the summary
+    in place. The whole node goes, with all its facts, not only the wrong lines.
+
+    Args:
+        uuid: UUID of the entity node to delete
+        group_id: Group the node must belong to. Falls back to the default group when omitted.
+    """
+    global graphiti_service
+
+    if graphiti_service is None:
+        return ErrorResponse(error='Graphiti service not initialized')
+
+    effective_group_id = group_id or config.graphiti.group_id
+    # Fail closed: a destructive call needs one concrete group to check the node against.
+    if not effective_group_id or effective_group_id == ALL_GROUPS:
+        return ErrorResponse(
+            error=(
+                'delete_entity_node needs one concrete group_id (no default configured, '
+                f"and '{ALL_GROUPS}' is not accepted for deletion)"
+            )
+        )
+
+    try:
+        client = await graphiti_service.get_client()
+        driver = _driver_for_group(client, effective_group_id)
+        node = await EntityNode.get_by_uuid(driver, uuid)
+        # On Neo4j the per-group driver is the shared one, so the lookup finds a node of any
+        # group. Compare group_id explicitly instead of trusting the routing for isolation.
+        if node.group_id != effective_group_id:
+            return ErrorResponse(
+                error=(
+                    f'Entity node {uuid} belongs to group {node.group_id!r}, not '
+                    f'{effective_group_id!r}; nothing deleted'
+                )
+            )
+        facts = await EntityEdge.get_by_node_uuid(driver, uuid)
+        await node.delete(driver)
+        return SuccessResponse(
+            message=(
+                f'Entity node with UUID {uuid} deleted successfully, '
+                f'with {len(facts)} fact(s) attached to it'
+            )
+        )
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f'Error deleting entity node: {error_msg}')
+        return ErrorResponse(error=f'Error deleting entity node: {error_msg}')
 
 
 @mcp.tool()
