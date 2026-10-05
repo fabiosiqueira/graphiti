@@ -570,6 +570,9 @@ The Graphiti MCP server exposes the following tools:
   Accepts an optional `group_id`; defaults to the configured group.
 - `delete_entity_edge`: Delete an entity edge from the knowledge graph.
   Accepts an optional `group_id`; defaults to the configured group.
+- `delete_entity_node`: Delete an entity node with all its facts — the way to drop a wrong node
+  summary, which deleting facts leaves in place. Refuses a node outside the given `group_id`
+  (defaults to the configured group) and refuses `'*'`.
 - `delete_episode`: Delete an episode and cascade-delete the entities/facts it solely created.
   Accepts an optional `group_id`; defaults to the configured group.
 - `get_entity_edge`: Get an entity edge by its UUID. Accepts an optional `group_id`; defaults to
