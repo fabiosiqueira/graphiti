@@ -1,7 +1,6 @@
 # Graphiti MCP Server Configuration for OpenRouter (cloud LLM + embedder) + Neo4j
-# Replaces config-ollama-neo4j.yaml: extraction and embeddings both run against
-# OpenRouter instead of a local Ollama instance, so the machine no longer needs
-# to serve any local model for this service.
+# Extraction and embeddings both run against OpenRouter. Local Ollama models were
+# tried first and dropped: extraction quality was too low for a memory service.
 #
 # json_schema, not json_object: this project's own prior benchmark (see the
 # "Benchmark local Mac + fix json_schema" episode in this graph) found that

@@ -47,7 +47,8 @@ nosso mora aqui. Correção de fato: o guia do MCP citado lá vive em
 ## Runtime
 
 - `llm.reasoning` (config do MCP) manda no esforço de reasoning; sem valor explícito,
-  `factories.reasoning_effort_for_model` decide por família de modelo, e gpt-5.5 roda com
-  reasoning **off** por custo. Medição de qualidade pendente no STATE.md.
+  `factories.reasoning_effort_for_model` decide por família de modelo (regra de código: a
+  família gpt-5.5 recebe reasoning **off**). Não diz qual modelo roda em produção; isso
+  está na config do deploy.
 - Deploy é Coolify com `Dockerfile.fork` (sem stack torch); nunca o `Dockerfile` do
   upstream. Config em `.claude/done.md`.
