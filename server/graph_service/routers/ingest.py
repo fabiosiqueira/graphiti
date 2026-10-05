@@ -6,9 +6,8 @@ from fastapi import APIRouter, FastAPI, status
 from graphiti_core.nodes import EpisodeType  # type: ignore
 from graphiti_core.utils.maintenance.graph_data_operations import clear_data  # type: ignore
 
-from graph_service.config import get_settings
 from graph_service.dto import AddEntityNodeRequest, AddMessagesRequest, Message, Result
-from graph_service.zep_graphiti import ZepGraphitiDep, get_graphiti_singleton
+from graph_service.zep_graphiti import ZepGraphitiDep
 
 
 class AsyncWorker:
@@ -19,16 +18,9 @@ class AsyncWorker:
     async def worker(self):
         while True:
             try:
+                print(f'Got a job: (size of remaining queue: {self.queue.qsize()})')
                 job = await self.queue.get()
-                try:
-                    await job()
-                except Exception as e:
-                    import traceback
-
-                    print(f'Error processing background job: {e}')
-                    traceback.print_exc()
-                finally:
-                    self.queue.task_done()
+                await job()
             except asyncio.CancelledError:
                 break
 
@@ -61,20 +53,16 @@ async def add_messages(
     request: AddMessagesRequest,
     graphiti: ZepGraphitiDep,
 ):
-    settings = get_settings()
-
     async def add_messages_task(m: Message):
-        client = get_graphiti_singleton(settings)
-        print(f'Starting add_episode for message in group {request.group_id}...')
-        await client.add_episode(
-            name=m.name,
+        await graphiti.add_episode(
+            uuid=m.uuid,
             group_id=request.group_id,
+            name=m.name,
             episode_body=f'{m.role or ""}({m.role_type}): {m.content}',
             reference_time=m.timestamp,
             source=EpisodeType.message,
             source_description=m.source_description,
         )
-        print(f'Finished add_episode for message in group {request.group_id}!')
 
     for m in request.messages:
         await async_worker.queue.put(partial(add_messages_task, m))
