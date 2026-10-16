@@ -1,13 +1,13 @@
 [project]
 name = "mcp-server"
-version = "1.1.0"
+version = "1.1.1"
 description = "Graphiti MCP Server"
 readme = "README.md"
 requires-python = ">=3.10,<4"
 dependencies = [
     "mcp>=2,<3",
     "openai>=2.41.0",
-    "graphiti-core[falkordb]>=0.30.2",
+    "graphiti-core[falkordb]>=0.31.1",
     # graphiti_core imports httpx without declaring it; openai 3.x moved to httpx2
     # and stopped bringing it in, so the server must ask for it itself.
     "httpx>=0.28.1",
